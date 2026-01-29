@@ -55,6 +55,9 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	// Get synced commit ID
+	syncedCommit, _ := meta.GetSyncedCommitID()
+
 	// Get META file list
 	files, err := meta.GetMetaFileList()
 	if err != nil {
@@ -79,6 +82,18 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	fmt.Printf("  %-20s %s\n", "META Branch:", meta.BranchName)
 	fmt.Printf("  %-20s %s\n", "Main Commit:", shortCommit(currentCommit))
 	fmt.Printf("  %-20s %s\n", "META Commit:", shortCommit(metaCommit))
+
+	// Sync status
+	if syncedCommit == "" {
+		fmt.Printf("  %-20s %s\n", "Sync Status:", "⚠ Not synced")
+		fmt.Println("                       Run 'lm sync' to sync")
+	} else if syncedCommit == currentCommit {
+		fmt.Printf("  %-20s %s\n", "Sync Status:", "✓ Up to date")
+	} else {
+		fmt.Printf("  %-20s %s\n", "Sync Status:", "⚠ Out of sync")
+		fmt.Printf("  %-20s %s\n", "Synced Commit:", shortCommit(syncedCommit))
+		fmt.Println("                       Run 'lm sync' to update")
+	}
 	fmt.Println()
 
 	fmt.Println("  META Files:")

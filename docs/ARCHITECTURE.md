@@ -47,7 +47,7 @@ LadderMoon 采用 **"分而治之，外部调度"** 的架构模式，将 AI 视
 
 ### 影子分支 (Shadow Branch)
 
-使用独立的 Git 分支（如 `ai-brain`）存储 META 信息，不与主分支合并。
+使用独立的 Git 分支 `laddermoon-meta` 存储 META 信息，不与主分支合并。
 
 **优点：**
 - 利用 Git 自身功能管理文档版本
@@ -63,15 +63,16 @@ META 文件记录最后同步的 CommitID：
 ### 核心文件结构
 
 ```
-ai-brain 分支
+laddermoon-meta 分支
 ├── META.md              # 项目元信息主文件
-├── Questions/        # 待解决的疑问，每个问题一个文件，里面记录问题和解决的结果。
-    Questions.log     # 只记录问题的元数据（创建时间，是否解决）
-├── Issues/          # 已识别的问题
-    Issues.log        # 只记录Issue元数据
-├── Suggestions/      # 改进建议
-    Suggestions.log   # 只记录Suggestion元数据
-    UserFeed.log      # 用户Feed的原始记录。
+├── .sync_state          # 记录最后同步的 CommitID
+├── UserFeed.log         # 用户 Feed 的原始记录
+├── Questions/           # 待解决的疑问
+│   └── .gitkeep
+├── Issues/              # 已识别的问题
+│   └── .gitkeep
+└── Suggestions/         # 改进建议
+    └── .gitkeep
 ```
 ---
 
@@ -80,24 +81,26 @@ ai-brain 分支
 ```
 LadderMoon/
 ├── cmd/
-│   └── lm/                 # CLI 入口
-│       └── main.go
-├── internal/
-│   ├── syncer/             # Repo Syncer 逻辑
-│   ├── questioner/         # Questioner 逻辑
-│   ├── solver/             # Question Solver 逻辑
-│   ├── issuer/             # Issuer 逻辑
-│   ├── suggester/          # Suggester 逻辑
-│   ├── coder/              # Coder 逻辑
-│   ├── reviewer/           # Reviewer 逻辑
-│   ├── improver/           # Self-Improver 逻辑
-│   └── processor/          # User Input Processor 逻辑
+│   └── lm/                   # CLI 入口
+│       ├── main.go
+│       └── cmd/
+│           ├── root.go       # 根命令定义
+│           ├── init.go       # lm init
+│           ├── status.go     # lm status
+│           ├── feed.go       # lm feed
+│           ├── sync.go       # lm sync
+│           ├── audit.go      # lm audit (Issuer)
+│           ├── propose.go    # lm propose (Suggester)
+│           ├── solve.go      # lm solve (Coder)
+│           └── version.go    # lm version
 ├── pkg/
-│   └── meta/                # META 文件操作库
-        claudecode           # 实现对于ClaudeCode的封装
-        opencode             # 
-     skills/                # skill的实现，是一些MD文件
-└── README.md               # 项目文档 (同时作为 GitHub Profile)
+│   └── meta/                 # META 文件操作库
+│       └── meta.go           # Git 操作、文件读写、同步状态管理
+├── docs/
+│   ├── PRODUCT.md            # 产品文档
+│   ├── ARCHITECTURE.md       # 架构设计文档
+│   └── IMPLEMENTATION.md     # 实现计划文档
+└── README.md                 # 项目文档
 ```
 
 ---

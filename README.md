@@ -25,39 +25,76 @@ LadderMoon 通过三个维度重塑开发体验：
 🧠 Self-Evolution：通过 Decision Log 学习用户的否定与反馈，实现 AI 的个性化成长。
 
 🛠️ 安装与起步
-安装
-目前支持通过 Go 环境直接编译安装：
 
-Bash
+### 安装
 
-go install github.com/LadderMoon/LadderMoon/cmd/lm@latest
-快速开始
-初始化项目基因：
+```bash
+# 从源码编译
+git clone https://github.com/laddermoon/laddermoon.git
+cd laddermoon
+go build -o lm ./cmd/lm
 
-Bash
+# 或直接安装
+go install github.com/laddermoon/laddermoon/cmd/lm@latest
+```
 
+### 快速开始
+
+**初始化项目：**
+
+```bash
 lm init
-这会创建影子分支 ai-shadow 并初始化 META 结构。
+```
 
-同步当前进度：
+这会创建影子分支 `laddermoon-meta` 并初始化 META 结构。
 
-Bash
+**添加项目信息：**
 
+```bash
+lm feed "这是一个使用 Go 开发的 CLI 工具"
+```
+
+**同步代码变更：**
+
+```bash
 lm sync
-将本地代码变动同步至 META 库，确保 AI “理解”最新的修改。
+```
 
-探测风险与建议：
+将本地代码变动同步至 META 库，确保 AI "理解"最新的修改。
 
-Bash
+**查看状态：**
 
+```bash
+lm status
+```
+
+**探测问题与建议：**
+
+```bash
 lm audit    # 发现问题 (Issuer)
 lm propose  # 获取改进建议 (Suggester)
-处理任务：
+```
 
-Bash
+**解决任务：**
 
-lm solve [ISSUE_ID]
-📂 角色定义 (The 9 Skills)
+```bash
+lm solve Issues/issue-001.md
+```
+
+### 命令一览
+
+| 命令 | 功能 |
+|------|------|
+| `lm init` | 初始化影子分支和 META 结构 |
+| `lm feed <text>` | 录入项目信息到 META |
+| `lm sync` | 同步代码库变化到 META |
+| `lm status` | 查看 META 状态和同步状态 |
+| `lm audit` | AI 探测潜在问题 |
+| `lm propose` | AI 提出改进建议 |
+| `lm solve <file>` | AI 解决指定的 Issue/Suggestion |
+| `lm version` | 显示版本信息 |
+
+## 📂 角色定义 (The 9 Skills)
 LadderMoon 内部集成了 9 个专业化角色，共同维护项目的生命周期：
 
 Syncer: 仓库同步专家。

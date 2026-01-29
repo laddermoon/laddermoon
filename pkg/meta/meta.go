@@ -186,3 +186,172 @@ func GetMetaFileList() ([]string, error) {
 	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
 	return lines, nil
 }
+
+// ReadFile reads content of a file from the shadow branch
+func ReadFile(filename string) (string, error) {
+	if !IsInitialized() {
+		return "", ErrNotInitialized
+	}
+	cmd := exec.Command("git", "show", fmt.Sprintf("%s:%s", BranchName, filename))
+	output, err := cmd.Output()
+	if err != nil {
+		return "", nil // File doesn't exist, return empty
+	}
+	return string(output), nil
+}
+
+// withWorktree executes a function with a temporary worktree checked out to the META branch
+func withWorktree(fn func(tmpDir string) error) error {
+	gitRoot, err := GetGitRoot()
+	if err != nil {
+		return err
+	}
+
+	tmpDir, err := os.MkdirTemp("", "laddermoon-work-")
+	if err != nil {
+		return fmt.Errorf("failed to create temp dir: %w", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	// Create worktree for META branch
+	cmd := exec.Command("git", "worktree", "add", tmpDir, BranchName)
+	cmd.Dir = gitRoot
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to create worktree: %w", err)
+	}
+	defer func() {
+		rmCmd := exec.Command("git", "worktree", "remove", "--force", tmpDir)
+		rmCmd.Dir = gitRoot
+		rmCmd.Run()
+	}()
+
+	return fn(tmpDir)
+}
+
+// AppendToMetaFile appends content to META.md on the shadow branch
+func AppendToMetaFile(content string) error {
+	return AppendToFile(MetaFileName, content)
+}
+
+// AppendToFile appends content to a file on the shadow branch
+func AppendToFile(filename, content string) error {
+	if !IsInitialized() {
+		return ErrNotInitialized
+	}
+
+	return withWorktree(func(tmpDir string) error {
+		filePath := filepath.Join(tmpDir, filename)
+
+		// Ensure parent directory exists
+		if err := os.MkdirAll(filepath.Dir(filePath), 0755); err != nil {
+			return fmt.Errorf("failed to create directory: %w", err)
+		}
+
+		// Append to file
+		f, err := os.OpenFile(filePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+		if err != nil {
+			return fmt.Errorf("failed to open file: %w", err)
+		}
+		defer f.Close()
+
+		if _, err := f.WriteString(content); err != nil {
+			return fmt.Errorf("failed to write content: %w", err)
+		}
+
+		// Git add and commit
+		cmd := exec.Command("git", "add", filename)
+		cmd.Dir = tmpDir
+		if err := cmd.Run(); err != nil {
+			return fmt.Errorf("failed to add file: %w", err)
+		}
+
+		cmd = exec.Command("git", "commit", "-m", fmt.Sprintf("Update %s", filename))
+		cmd.Dir = tmpDir
+		if err := cmd.Run(); err != nil {
+			return fmt.Errorf("failed to commit: %w", err)
+		}
+
+		return nil
+	})
+}
+
+// WriteFile writes content to a file on the shadow branch (overwrites existing)
+func WriteFile(filename, content string) error {
+	if !IsInitialized() {
+		return ErrNotInitialized
+	}
+
+	return withWorktree(func(tmpDir string) error {
+		filePath := filepath.Join(tmpDir, filename)
+
+		// Ensure parent directory exists
+		if err := os.MkdirAll(filepath.Dir(filePath), 0755); err != nil {
+			return fmt.Errorf("failed to create directory: %w", err)
+		}
+
+		// Write file
+		if err := os.WriteFile(filePath, []byte(content), 0644); err != nil {
+			return fmt.Errorf("failed to write file: %w", err)
+		}
+
+		// Git add and commit
+		cmd := exec.Command("git", "add", filename)
+		cmd.Dir = tmpDir
+		if err := cmd.Run(); err != nil {
+			return fmt.Errorf("failed to add file: %w", err)
+		}
+
+		cmd = exec.Command("git", "commit", "-m", fmt.Sprintf("Update %s", filename))
+		cmd.Dir = tmpDir
+		if err := cmd.Run(); err != nil {
+			return fmt.Errorf("failed to commit: %w", err)
+		}
+
+		return nil
+	})
+}
+
+// GetSyncedCommitID reads the last synced commit ID from META branch
+func GetSyncedCommitID() (string, error) {
+	content, err := ReadFile(".sync_state")
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(content), nil
+}
+
+// SetSyncedCommitID saves the synced commit ID to META branch
+func SetSyncedCommitID(commitID string) error {
+	return WriteFile(".sync_state", commitID+"\n")
+}
+
+// GetGitDiff returns the diff between two commits
+func GetGitDiff(fromCommit, toCommit string) (string, error) {
+	var cmd *exec.Cmd
+	if fromCommit == "" {
+		// If no from commit, get the full diff of the to commit
+		cmd = exec.Command("git", "show", "--stat", toCommit)
+	} else {
+		cmd = exec.Command("git", "diff", "--stat", fromCommit, toCommit)
+	}
+	output, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("failed to get diff: %w", err)
+	}
+	return string(output), nil
+}
+
+// GetGitLog returns commit log between two commits
+func GetGitLog(fromCommit, toCommit string) (string, error) {
+	var cmd *exec.Cmd
+	if fromCommit == "" {
+		cmd = exec.Command("git", "log", "--oneline", "-20", toCommit)
+	} else {
+		cmd = exec.Command("git", "log", "--oneline", fmt.Sprintf("%s..%s", fromCommit, toCommit))
+	}
+	output, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("failed to get log: %w", err)
+	}
+	return string(output), nil
+}
