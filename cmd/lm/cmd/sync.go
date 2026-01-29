@@ -78,6 +78,16 @@ func runSync(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	// After skill completes, update sync state
+	printInfo("")
+	printInfo("Updating sync state...")
+	if err := meta.SetSyncedCommitID(currentCommit); err != nil {
+		printError("Failed to update sync state: " + err.Error())
+		return err
+	}
+
+	printSuccess("Sync complete!")
+	printInfo(fmt.Sprintf("Synced to commit: %s", shortCommit(currentCommit)))
 	printInfo("Next: Run 'lm audit' to detect issues or 'lm propose' for suggestions.")
 
 	return nil
@@ -86,7 +96,8 @@ func runSync(cmd *cobra.Command, args []string) error {
 func invokeSyncSkill() error {
 	prompt := "Use the laddermoon-sync skill to synchronize the codebase changes to META."
 
-	cmd := exec.Command("claude", "-p", prompt)
+	// Use interactive mode (not -p) because the skill needs to modify files
+	cmd := exec.Command("claude", prompt)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	cmd.Stdin = os.Stdin

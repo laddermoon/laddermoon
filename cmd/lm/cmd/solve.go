@@ -66,7 +66,8 @@ func runSolve(cmd *cobra.Command, args []string) error {
 func invokeSolveSkill(filename string) error {
 	prompt := fmt.Sprintf("Use the laddermoon-solve skill to solve this Issue/Suggestion: %s", filename)
 
-	cmd := exec.Command("claude", "-p", prompt)
+	// Use interactive mode (not -p) because the skill needs to modify code files
+	cmd := exec.Command("claude", prompt)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	cmd.Stdin = os.Stdin

@@ -94,7 +94,8 @@ func invokeProposeSkill(focusArea string) error {
 		prompt = fmt.Sprintf("Use the laddermoon-propose skill to suggest improvements with focus on: %s", focusArea)
 	}
 
-	cmd := exec.Command("claude", "-p", prompt)
+	// Use interactive mode (not -p) because the skill needs to create Suggestion files
+	cmd := exec.Command("claude", prompt)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	cmd.Stdin = os.Stdin

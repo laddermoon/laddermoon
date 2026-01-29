@@ -94,7 +94,8 @@ func invokeAuditSkill(focusArea string) error {
 		prompt = fmt.Sprintf("Use the laddermoon-audit skill to audit the project with focus on: %s", focusArea)
 	}
 
-	cmd := exec.Command("claude", "-p", prompt)
+	// Use interactive mode (not -p) because the skill needs to create Issue files
+	cmd := exec.Command("claude", prompt)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	cmd.Stdin = os.Stdin

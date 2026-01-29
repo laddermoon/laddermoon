@@ -83,7 +83,8 @@ func invokeSkill(skillName, input string) error {
 	// Claude Code uses /skillname:action format or just mention the skill
 	prompt := fmt.Sprintf("Use the %s skill to process this input:\n\n%s", skillName, input)
 
-	cmd := exec.Command("claude", "-p", prompt)
+	// Use interactive mode (not -p) because the skill needs to modify files
+	cmd := exec.Command("claude", prompt)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	cmd.Stdin = os.Stdin
