@@ -1,6 +1,7 @@
 package meta
 
 import (
+	"embed"
 	"errors"
 	"fmt"
 	"os"
@@ -354,4 +355,50 @@ func GetGitLog(fromCommit, toCommit string) (string, error) {
 		return "", fmt.Errorf("failed to get log: %w", err)
 	}
 	return string(output), nil
+}
+
+// InstallSkills installs LadderMoon skills to the project's .claude/skills directory
+func InstallSkills(skillsFS embed.FS, skillNames []string) error {
+	gitRoot, err := GetGitRoot()
+	if err != nil {
+		return err
+	}
+
+	skillsDir := filepath.Join(gitRoot, ".claude", "skills")
+
+	for _, name := range skillNames {
+		skillDir := filepath.Join(skillsDir, name)
+
+		// Create skill directory
+		if err := os.MkdirAll(skillDir, 0755); err != nil {
+			return fmt.Errorf("failed to create skill directory %s: %w", name, err)
+		}
+
+		// Read skill file from embedded FS
+		content, err := skillsFS.ReadFile(filepath.Join(name, "SKILL.md"))
+		if err != nil {
+			return fmt.Errorf("failed to read embedded skill %s: %w", name, err)
+		}
+
+		// Write skill file
+		skillFile := filepath.Join(skillDir, "SKILL.md")
+		if err := os.WriteFile(skillFile, content, 0644); err != nil {
+			return fmt.Errorf("failed to write skill file %s: %w", name, err)
+		}
+	}
+
+	return nil
+}
+
+// SkillsInstalled checks if LadderMoon skills are installed
+func SkillsInstalled() bool {
+	gitRoot, err := GetGitRoot()
+	if err != nil {
+		return false
+	}
+
+	// Check if at least the feed skill exists
+	skillFile := filepath.Join(gitRoot, ".claude", "skills", "laddermoon-feed", "SKILL.md")
+	_, err = os.Stat(skillFile)
+	return err == nil
 }

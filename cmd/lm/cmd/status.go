@@ -83,6 +83,14 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	fmt.Printf("  %-20s %s\n", "Main Commit:", shortCommit(currentCommit))
 	fmt.Printf("  %-20s %s\n", "META Commit:", shortCommit(metaCommit))
 
+	// Skills status
+	if meta.SkillsInstalled() {
+		fmt.Printf("  %-20s %s\n", "Skills:", "✓ Installed")
+	} else {
+		fmt.Printf("  %-20s %s\n", "Skills:", "⚠ Not installed")
+		fmt.Println("                       Run 'lm init' to install")
+	}
+
 	// Sync status
 	if syncedCommit == "" {
 		fmt.Printf("  %-20s %s\n", "Sync Status:", "⚠ Not synced")

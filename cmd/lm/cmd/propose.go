@@ -4,23 +4,25 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"strings"
 
 	"github.com/laddermoon/laddermoon/pkg/meta"
 	"github.com/spf13/cobra"
 )
 
 var proposeCmd = &cobra.Command{
-	Use:   "propose",
+	Use:   "propose [focus area]",
 	Short: "Propose improvements for the project",
-	Long: `Analyze the project using AI to suggest improvements.
+	Long: `Analyze the project using the laddermoon-propose skill to suggest improvements.
 
-This command:
-1. Checks if META is synced with the latest code
-2. Invokes the Suggester AI role to analyze the project
-3. Creates Suggestion files in the Suggestions/ directory
+This command invokes the Suggester AI role to:
+1. Analyze the project through the lens of META
+2. Identify valuable improvement opportunities
+3. Create Suggestion files in the Suggestions/ directory
 
-Each suggestion is saved as a separate file for tracking.`,
+Example:
+  lm propose              # General suggestions
+  lm propose DX           # Focus on developer experience
+  lm propose performance  # Focus on performance optimizations`,
 	RunE: runPropose,
 }
 
@@ -40,6 +42,13 @@ func runPropose(cmd *cobra.Command, args []string) error {
 		return meta.ErrNotInitialized
 	}
 
+	// Check if skills are installed
+	if !meta.SkillsInstalled() {
+		printError("LadderMoon skills are not installed.")
+		printInfo("Run 'lm init' to reinstall.")
+		return fmt.Errorf("skills not installed")
+	}
+
 	// Check sync status
 	currentCommit, _ := meta.GetCurrentCommitID()
 	syncedCommit, _ := meta.GetSyncedCommitID()
@@ -56,80 +65,39 @@ func runPropose(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("out of sync")
 	}
 
-	printInfo("Analyzing project for improvement suggestions...")
-
-	// Read META.md for context
-	metaContent, err := meta.ReadMetaFile()
-	if err != nil {
-		printError("Failed to read META.md: " + err.Error())
-		return err
+	// Determine focus area
+	focusArea := "general"
+	if len(args) > 0 {
+		focusArea = args[0]
 	}
 
-	// Build the prompt for Claude
-	prompt := buildProposePrompt(metaContent)
+	printInfo("Analyzing project for improvement suggestions...")
+	if focusArea != "general" {
+		printInfo("Focus area: " + focusArea)
+	}
 
-	// Invoke Claude Code
-	printInfo("Invoking AI Suggester...")
-	result, err := invokeClaude(prompt)
-	if err != nil {
-		printError("Failed to invoke AI: " + err.Error())
+	// Invoke Claude Code with the laddermoon-propose skill
+	if err := invokeProposeSkill(focusArea); err != nil {
+		printError("Failed to propose: " + err.Error())
 		printInfo("Make sure 'claude' CLI is installed and configured.")
 		return err
 	}
 
-	if strings.TrimSpace(result) == "" {
-		printSuccess("No suggestions at this time!")
-		return nil
-	}
-
-	printSuccess("Analysis complete!")
-	fmt.Println("\n" + result)
-
 	return nil
 }
 
-func buildProposePrompt(metaContent string) string {
-	return fmt.Sprintf(`You are the Suggester role in the LadderMoon system.
-
-Your task: Analyze this project and suggest IMPROVEMENTS (enhancements, optimizations, new features).
-
-Project META information:
----
-%s
----
-
-Instructions:
-1. Review the project context from META
-2. Identify valuable improvement opportunities
-3. For each suggestion, output in this format:
-
-## Suggestion: [Brief Title]
-**Impact**: High/Medium/Low
-**Effort**: High/Medium/Low
-**Category**: Feature/Optimization/Refactoring/Testing/DevOps
-**Description**: [Detailed description of the improvement]
-**Benefit**: [What value this brings]
-**Implementation Notes**: [How to implement it]
-
-If no improvements are needed, simply respond: "Project looks great! No suggestions at this time."
-
-Focus on:
-- Feature enhancements
-- Performance optimizations
-- Code refactoring opportunities
-- Testing improvements
-- Developer experience
-- Maintainability
-
-Be constructive and prioritize high-impact, low-effort improvements.`, metaContent)
-}
-
-func invokeClaude(prompt string) (string, error) {
-	cmd := exec.Command("claude", "-p", prompt)
-	cmd.Stderr = os.Stderr
-	output, err := cmd.Output()
-	if err != nil {
-		return "", fmt.Errorf("claude command failed: %w", err)
+func invokeProposeSkill(focusArea string) error {
+	var prompt string
+	if focusArea == "general" {
+		prompt = "Use the laddermoon-propose skill to suggest general improvements for the project."
+	} else {
+		prompt = fmt.Sprintf("Use the laddermoon-propose skill to suggest improvements with focus on: %s", focusArea)
 	}
-	return string(output), nil
+
+	cmd := exec.Command("claude", "-p", prompt)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	cmd.Stdin = os.Stdin
+
+	return cmd.Run()
 }

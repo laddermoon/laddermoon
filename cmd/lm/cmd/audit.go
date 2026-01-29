@@ -4,23 +4,25 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"strings"
 
 	"github.com/laddermoon/laddermoon/pkg/meta"
 	"github.com/spf13/cobra"
 )
 
 var auditCmd = &cobra.Command{
-	Use:   "audit",
+	Use:   "audit [focus area]",
 	Short: "Detect potential issues in the project",
-	Long: `Analyze the project using AI to detect potential issues.
+	Long: `Analyze the project using the laddermoon-audit skill to detect potential issues.
 
-This command:
-1. Checks if META is synced with the latest code
-2. Invokes the Issuer AI role to analyze the project
-3. Creates Issue files in the Issues/ directory
+This command invokes the Issuer AI role to:
+1. Analyze the project through the lens of META
+2. Identify genuine problems that need attention
+3. Create Issue files in the Issues/ directory
 
-Each detected issue is saved as a separate file for tracking.`,
+Example:
+  lm audit              # General audit
+  lm audit security     # Focus on security issues
+  lm audit performance  # Focus on performance issues`,
 	RunE: runAudit,
 }
 
@@ -40,6 +42,13 @@ func runAudit(cmd *cobra.Command, args []string) error {
 		return meta.ErrNotInitialized
 	}
 
+	// Check if skills are installed
+	if !meta.SkillsInstalled() {
+		printError("LadderMoon skills are not installed.")
+		printInfo("Run 'lm init' to reinstall.")
+		return fmt.Errorf("skills not installed")
+	}
+
 	// Check sync status
 	currentCommit, _ := meta.GetCurrentCommitID()
 	syncedCommit, _ := meta.GetSyncedCommitID()
@@ -56,78 +65,39 @@ func runAudit(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("out of sync")
 	}
 
-	printInfo("Analyzing project for potential issues...")
-
-	// Read META.md for context
-	metaContent, err := meta.ReadMetaFile()
-	if err != nil {
-		printError("Failed to read META.md: " + err.Error())
-		return err
+	// Determine focus area
+	focusArea := "general"
+	if len(args) > 0 {
+		focusArea = args[0]
 	}
 
-	// Build the prompt for Claude
-	prompt := buildAuditPrompt(metaContent)
+	printInfo("Analyzing project for potential issues...")
+	if focusArea != "general" {
+		printInfo("Focus area: " + focusArea)
+	}
 
-	// Invoke Claude Code
-	printInfo("Invoking AI Issuer...")
-	result, err := invokeClaudeCode(prompt)
-	if err != nil {
-		printError("Failed to invoke AI: " + err.Error())
+	// Invoke Claude Code with the laddermoon-audit skill
+	if err := invokeAuditSkill(focusArea); err != nil {
+		printError("Failed to audit: " + err.Error())
 		printInfo("Make sure 'claude' CLI is installed and configured.")
 		return err
 	}
 
-	if strings.TrimSpace(result) == "" {
-		printSuccess("No issues detected!")
-		return nil
-	}
-
-	printSuccess("Audit complete!")
-	fmt.Println("\n" + result)
-
 	return nil
 }
 
-func buildAuditPrompt(metaContent string) string {
-	return fmt.Sprintf(`You are the Issuer role in the LadderMoon system.
-
-Your task: Analyze this project and identify potential ISSUES (problems, bugs, risks).
-
-Project META information:
----
-%s
----
-
-Instructions:
-1. Review the project context from META
-2. Identify concrete, actionable issues
-3. For each issue, output in this format:
-
-## Issue: [Brief Title]
-**Severity**: High/Medium/Low
-**Category**: Bug/Security/Performance/Architecture/Documentation
-**Description**: [Detailed description of the issue]
-**Recommendation**: [How to fix it]
-
-If no issues are found, simply respond: "No issues detected."
-
-Focus on:
-- Code quality problems
-- Potential bugs
-- Security vulnerabilities
-- Performance concerns
-- Architectural issues
-- Missing documentation
-
-Be specific and actionable. Don't be overly critical - focus on genuine problems.`, metaContent)
-}
-
-func invokeClaudeCode(prompt string) (string, error) {
-	cmd := exec.Command("claude", "-p", prompt)
-	cmd.Stderr = os.Stderr
-	output, err := cmd.Output()
-	if err != nil {
-		return "", fmt.Errorf("claude command failed: %w", err)
+func invokeAuditSkill(focusArea string) error {
+	var prompt string
+	if focusArea == "general" {
+		prompt = "Use the laddermoon-audit skill to perform a general project audit."
+	} else {
+		prompt = fmt.Sprintf("Use the laddermoon-audit skill to audit the project with focus on: %s", focusArea)
 	}
-	return string(output), nil
+
+	cmd := exec.Command("claude", "-p", prompt)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	cmd.Stdin = os.Stdin
+
+	return cmd.Run()
 }

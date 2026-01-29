@@ -2,6 +2,8 @@ package cmd
 
 import (
 	"fmt"
+	"os"
+	"os/exec"
 
 	"github.com/laddermoon/laddermoon/pkg/meta"
 	"github.com/spf13/cobra"
@@ -12,10 +14,10 @@ var syncCmd = &cobra.Command{
 	Short: "Synchronize code changes to META",
 	Long: `Synchronize the current repository state with the META system.
 
-This command:
-1. Detects changes since the last sync
-2. Records the git diff and commit log
-3. Updates the sync state
+This command invokes the laddermoon-sync skill via Claude Code to:
+1. Detect changes since the last sync
+2. Analyze the changes and update META.md appropriately
+3. Update the sync state
 
 After sync, you can run 'lm audit' or 'lm propose' to analyze the changes.`,
 	RunE: runSync,
@@ -40,7 +42,12 @@ func runSync(cmd *cobra.Command, args []string) error {
 		return meta.ErrNotInitialized
 	}
 
-	printInfo("Synchronizing your intent...")
+	// Check if skills are installed
+	if !meta.SkillsInstalled() {
+		printError("LadderMoon skills are not installed.")
+		printInfo("Run 'lm init' to reinstall.")
+		return fmt.Errorf("skills not installed")
+	}
 
 	// Get current commit
 	currentCommit, err := meta.GetCurrentCommitID()
@@ -57,52 +64,32 @@ func runSync(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	// Get diff and log
-	var diff, log string
+	printInfo("Synchronizing codebase changes with AI...")
 	if lastSyncedCommit != "" {
-		printInfo(fmt.Sprintf("Syncing changes from %s to %s...", shortCommit(lastSyncedCommit), shortCommit(currentCommit)))
-		diff, _ = meta.GetGitDiff(lastSyncedCommit, currentCommit)
-		log, _ = meta.GetGitLog(lastSyncedCommit, currentCommit)
+		printInfo(fmt.Sprintf("Changes: %s → %s", shortCommit(lastSyncedCommit), shortCommit(currentCommit)))
 	} else {
-		printInfo("First sync - recording initial state...")
-		diff, _ = meta.GetGitDiff("", currentCommit)
-		log, _ = meta.GetGitLog("", currentCommit)
+		printInfo("First sync - analyzing current state...")
 	}
 
-	// Record sync info to META
-	syncEntry := fmt.Sprintf("\n## Sync [%s]\n\n", shortCommit(currentCommit))
-	if lastSyncedCommit != "" {
-		syncEntry += fmt.Sprintf("Changes from %s to %s:\n\n", shortCommit(lastSyncedCommit), shortCommit(currentCommit))
-	} else {
-		syncEntry += "Initial sync:\n\n"
-	}
-
-	if log != "" {
-		syncEntry += "### Commits\n```\n" + log + "```\n\n"
-	}
-
-	if diff != "" {
-		syncEntry += "### Changed Files\n```\n" + diff + "```\n\n"
-	}
-
-	if err := meta.AppendToMetaFile(syncEntry); err != nil {
-		printError("Failed to update META.md: " + err.Error())
+	// Invoke Claude Code with the laddermoon-sync skill
+	if err := invokeSyncSkill(); err != nil {
+		printError("Failed to sync: " + err.Error())
+		printInfo("Make sure 'claude' CLI is installed and configured.")
 		return err
-	}
-
-	// Update sync state
-	if err := meta.SetSyncedCommitID(currentCommit); err != nil {
-		printError("Failed to update sync state: " + err.Error())
-		return err
-	}
-
-	printSuccess("Sync complete!")
-	if log != "" {
-		fmt.Println("\nRecent commits:")
-		fmt.Println(log)
 	}
 
 	printInfo("Next: Run 'lm audit' to detect issues or 'lm propose' for suggestions.")
 
 	return nil
+}
+
+func invokeSyncSkill() error {
+	prompt := "Use the laddermoon-sync skill to synchronize the codebase changes to META."
+
+	cmd := exec.Command("claude", "-p", prompt)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	cmd.Stdin = os.Stdin
+
+	return cmd.Run()
 }

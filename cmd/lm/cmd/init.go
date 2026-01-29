@@ -2,8 +2,11 @@ package cmd
 
 import (
 	"github.com/laddermoon/laddermoon/pkg/meta"
+	"github.com/laddermoon/laddermoon/skills"
 	"github.com/spf13/cobra"
 )
+
+var reinstallSkills bool
 
 var initCmd = &cobra.Command{
 	Use:   "init",
@@ -12,11 +15,14 @@ var initCmd = &cobra.Command{
 and setting up the META structure.
 
 This command must be run in a Git-managed repository and can only be
-executed once per repository.`,
+executed once per repository.
+
+Use --reinstall-skills to reinstall skills without re-initializing META.`,
 	RunE: runInit,
 }
 
 func init() {
+	initCmd.Flags().BoolVar(&reinstallSkills, "reinstall-skills", false, "Reinstall skills only (use if already initialized)")
 	rootCmd.AddCommand(initCmd)
 }
 
@@ -28,10 +34,33 @@ func runInit(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	// Handle --reinstall-skills flag
+	if reinstallSkills {
+		if !meta.IsInitialized() {
+			printError("LadderMoon is not initialized. Run 'lm init' first.")
+			return meta.ErrNotInitialized
+		}
+
+		printInfo("Reinstalling LadderMoon skills...")
+
+		if err := meta.InstallSkills(skills.SkillsFS, skills.SkillNames); err != nil {
+			printError("Failed to install skills: " + err.Error())
+			return err
+		}
+
+		printSuccess("Skills reinstalled successfully!")
+		printInfo("Installed skills:")
+		for _, name := range skills.SkillNames {
+			printInfo("  - " + name)
+		}
+		return nil
+	}
+
 	// Check if already initialized
 	if meta.IsInitialized() {
 		printError("LadderMoon is already initialized in this repository.")
 		printInfo("The 'laddermoon-meta' branch already exists.")
+		printInfo("Use --reinstall-skills to reinstall skills.")
 		return meta.ErrAlreadyInit
 	}
 
@@ -44,6 +73,14 @@ func runInit(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	printInfo("Installing LadderMoon skills...")
+
+	// Install skills to .claude/skills
+	if err := meta.InstallSkills(skills.SkillsFS, skills.SkillNames); err != nil {
+		printError("Failed to install skills: " + err.Error())
+		return err
+	}
+
 	printSuccess("LadderMoon initialized successfully!")
 	printInfo("Created shadow branch: laddermoon-meta")
 	printInfo("META structure:")
@@ -51,6 +88,11 @@ func runInit(cmd *cobra.Command, args []string) error {
 	printInfo("  - Questions/")
 	printInfo("  - Issues/")
 	printInfo("  - Suggestions/")
+	printInfo("")
+	printInfo("Installed skills:")
+	for _, name := range skills.SkillNames {
+		printInfo("  - " + name)
+	}
 	printInfo("")
 	printInfo("Next steps:")
 	printInfo("  - Run 'lm feed <info>' to add project information")
