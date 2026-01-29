@@ -38,6 +38,19 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		return meta.ErrNotInitialized
 	}
 
+	// Check if current branch is initialized
+	branchInitialized, err := meta.BranchMetaDirExists()
+	if err != nil {
+		printError("Failed to check branch status: " + err.Error())
+		return err
+	}
+
+	if !branchInitialized {
+		printError("LadderMoon is not initialized for this branch.")
+		printInfo("Run 'lm init' to initialize for this branch.")
+		return meta.ErrNotInitialized
+	}
+
 	printInfo("Checking status...")
 	fmt.Println()
 
@@ -78,7 +91,11 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	fmt.Println("╰─────────────────────────────────────────╯")
 	fmt.Println()
 
+	// Get current branch
+	currentBranch, _ := meta.GetCurrentBranch()
+
 	fmt.Printf("  %-20s %s\n", "Initialized:", "✓ Yes")
+	fmt.Printf("  %-20s %s\n", "Current Branch:", currentBranch)
 	fmt.Printf("  %-20s %s\n", "META Branch:", meta.BranchName)
 	fmt.Printf("  %-20s %s\n", "Main Commit:", shortCommit(currentCommit))
 	fmt.Printf("  %-20s %s\n", "META Commit:", shortCommit(metaCommit))

@@ -56,10 +56,15 @@ func runInit(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	// Check if already initialized
-	if meta.IsInitialized() {
-		printError("LadderMoon is already initialized in this repository.")
-		printInfo("The 'laddermoon-meta' branch already exists.")
+	// Check if already initialized for this branch
+	branchInitialized, err := meta.BranchMetaDirExists()
+	if err != nil {
+		printError("Failed to check initialization status: " + err.Error())
+		return err
+	}
+
+	if branchInitialized {
+		printError("LadderMoon is already initialized for this branch.")
 		printInfo("Use --reinstall-skills to reinstall skills.")
 		return meta.ErrAlreadyInit
 	}
@@ -81,8 +86,12 @@ func runInit(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	// Get current branch for display
+	currentBranch, _ := meta.GetCurrentBranch()
+
 	printSuccess("LadderMoon initialized successfully!")
-	printInfo("Created shadow branch: laddermoon-meta")
+	printInfo("Branch: " + currentBranch)
+	printInfo("Shadow branch: laddermoon-meta")
 	printInfo("META structure:")
 	printInfo("  - META.md (empty)")
 	printInfo("  - Questions/")

@@ -54,14 +54,42 @@ func IsInitialized() bool {
 	return BranchExists(BranchName)
 }
 
-// getCurrentBranch returns the current branch name
-func getCurrentBranch() (string, error) {
+// GetCurrentBranch returns the current branch name
+func GetCurrentBranch() (string, error) {
 	cmd := exec.Command("git", "rev-parse", "--abbrev-ref", "HEAD")
 	output, err := cmd.Output()
 	if err != nil {
 		return "", err
 	}
 	return strings.TrimSpace(string(output)), nil
+}
+
+// getBranchMetaDir returns the META directory path for a specific branch
+func getBranchMetaDir(branch string) string {
+	// Sanitize branch name for filesystem (replace / with _)
+	safeBranch := strings.ReplaceAll(branch, "/", "_")
+	return safeBranch
+}
+
+// BranchMetaDirExists checks if the META directory exists for current branch
+func BranchMetaDirExists() (bool, error) {
+	if !BranchExists(BranchName) {
+		return false, nil
+	}
+
+	branch, err := GetCurrentBranch()
+	if err != nil {
+		return false, err
+	}
+
+	branchDir := getBranchMetaDir(branch)
+	// Check if the branch directory exists in the shadow branch
+	cmd := exec.Command("git", "ls-tree", "-d", BranchName, branchDir)
+	output, err := cmd.Output()
+	if err != nil {
+		return false, nil
+	}
+	return len(strings.TrimSpace(string(output))) > 0, nil
 }
 
 // InitMetaStructure initializes the META structure on the shadow branch
@@ -72,6 +100,14 @@ func InitMetaStructure() error {
 		return err
 	}
 
+	// Get current branch name
+	branch, err := GetCurrentBranch()
+	if err != nil {
+		return fmt.Errorf("failed to get current branch: %w", err)
+	}
+
+	branchDir := getBranchMetaDir(branch)
+
 	// Create a temporary directory for the worktree
 	tmpDir, err := os.MkdirTemp("", "laddermoon-init-")
 	if err != nil {
@@ -79,49 +115,71 @@ func InitMetaStructure() error {
 	}
 	defer os.RemoveAll(tmpDir)
 
-	// Create orphan branch using worktree
-	cmd := exec.Command("git", "worktree", "add", "--detach", tmpDir)
-	cmd.Dir = gitRoot
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("failed to create worktree: %w", err)
-	}
-	defer func() {
-		// Clean up worktree
-		rmCmd := exec.Command("git", "worktree", "remove", "--force", tmpDir)
-		rmCmd.Dir = gitRoot
-		rmCmd.Run()
-	}()
+	// Check if shadow branch exists
+	shadowExists := BranchExists(BranchName)
 
-	// In the worktree, create orphan branch
-	cmd = exec.Command("git", "checkout", "--orphan", BranchName)
-	cmd.Dir = tmpDir
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("failed to create orphan branch: %w", err)
-	}
+	if shadowExists {
+		// Shadow branch exists, checkout and add branch directory
+		cmd := exec.Command("git", "worktree", "add", tmpDir, BranchName)
+		cmd.Dir = gitRoot
+		if err := cmd.Run(); err != nil {
+			return fmt.Errorf("failed to create worktree: %w", err)
+		}
+		defer func() {
+			rmCmd := exec.Command("git", "worktree", "remove", "--force", tmpDir)
+			rmCmd.Dir = gitRoot
+			rmCmd.Run()
+		}()
+	} else {
+		// Create orphan branch using worktree
+		cmd := exec.Command("git", "worktree", "add", "--detach", tmpDir)
+		cmd.Dir = gitRoot
+		if err := cmd.Run(); err != nil {
+			return fmt.Errorf("failed to create worktree: %w", err)
+		}
+		defer func() {
+			rmCmd := exec.Command("git", "worktree", "remove", "--force", tmpDir)
+			rmCmd.Dir = gitRoot
+			rmCmd.Run()
+		}()
 
-	// Remove all files from index
-	cmd = exec.Command("git", "rm", "-rf", "--cached", ".")
-	cmd.Dir = tmpDir
-	cmd.Run() // Ignore error if nothing to remove
+		// In the worktree, create orphan branch
+		cmd = exec.Command("git", "checkout", "--orphan", BranchName)
+		cmd.Dir = tmpDir
+		if err := cmd.Run(); err != nil {
+			return fmt.Errorf("failed to create orphan branch: %w", err)
+		}
 
-	// Clean the worktree directory (remove everything except .git)
-	entries, _ := os.ReadDir(tmpDir)
-	for _, entry := range entries {
-		if entry.Name() != ".git" {
-			os.RemoveAll(filepath.Join(tmpDir, entry.Name()))
+		// Remove all files from index
+		cmd = exec.Command("git", "rm", "-rf", "--cached", ".")
+		cmd.Dir = tmpDir
+		cmd.Run() // Ignore error if nothing to remove
+
+		// Clean the worktree directory (remove everything except .git)
+		entries, _ := os.ReadDir(tmpDir)
+		for _, entry := range entries {
+			if entry.Name() != ".git" {
+				os.RemoveAll(filepath.Join(tmpDir, entry.Name()))
+			}
 		}
 	}
 
-	// Create META.md (empty file)
-	metaPath := filepath.Join(tmpDir, MetaFileName)
+	// Create branch-specific directory
+	branchPath := filepath.Join(tmpDir, branchDir)
+	if err := os.MkdirAll(branchPath, 0755); err != nil {
+		return fmt.Errorf("failed to create branch directory: %w", err)
+	}
+
+	// Create META.md (empty file) in branch directory
+	metaPath := filepath.Join(branchPath, MetaFileName)
 	if err := os.WriteFile(metaPath, []byte(""), 0644); err != nil {
 		return fmt.Errorf("failed to create META.md: %w", err)
 	}
 
-	// Create directories with .gitkeep
+	// Create directories with .gitkeep in branch directory
 	dirs := []string{"Questions", "Issues", "Suggestions"}
 	for _, dir := range dirs {
-		dirPath := filepath.Join(tmpDir, dir)
+		dirPath := filepath.Join(branchPath, dir)
 		if err := os.MkdirAll(dirPath, 0755); err != nil {
 			return fmt.Errorf("failed to create directory %s: %w", dir, err)
 		}
@@ -132,14 +190,15 @@ func InitMetaStructure() error {
 	}
 
 	// Add all files
-	cmd = exec.Command("git", "add", "-A")
+	cmd := exec.Command("git", "add", "-A")
 	cmd.Dir = tmpDir
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("failed to add files: %w", err)
 	}
 
 	// Commit
-	cmd = exec.Command("git", "commit", "-m", "Initialize LadderMoon META structure")
+	commitMsg := fmt.Sprintf("Initialize LadderMoon META for branch: %s", branch)
+	cmd = exec.Command("git", "commit", "-m", commitMsg)
 	cmd.Dir = tmpDir
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("failed to commit: %w", err)
@@ -161,12 +220,21 @@ func GetMetaBranchCommitID() (string, error) {
 	return strings.TrimSpace(string(output)), nil
 }
 
-// ReadMetaFile reads the content of META.md from the shadow branch
+// ReadMetaFile reads the content of META.md from the shadow branch for current branch
 func ReadMetaFile() (string, error) {
 	if !IsInitialized() {
 		return "", ErrNotInitialized
 	}
-	cmd := exec.Command("git", "show", fmt.Sprintf("%s:%s", BranchName, MetaFileName))
+
+	branch, err := GetCurrentBranch()
+	if err != nil {
+		return "", err
+	}
+
+	branchDir := getBranchMetaDir(branch)
+	filePath := filepath.Join(branchDir, MetaFileName)
+
+	cmd := exec.Command("git", "show", fmt.Sprintf("%s:%s", BranchName, filePath))
 	output, err := cmd.Output()
 	if err != nil {
 		return "", fmt.Errorf("failed to read META.md: %w", err)
@@ -174,26 +242,55 @@ func ReadMetaFile() (string, error) {
 	return string(output), nil
 }
 
-// GetMetaFileList returns a list of files in the META branch
+// GetMetaFileList returns a list of files in the META branch for current branch
 func GetMetaFileList() ([]string, error) {
 	if !IsInitialized() {
 		return nil, ErrNotInitialized
 	}
-	cmd := exec.Command("git", "ls-tree", "-r", "--name-only", BranchName)
+
+	branch, err := GetCurrentBranch()
+	if err != nil {
+		return nil, err
+	}
+
+	branchDir := getBranchMetaDir(branch)
+
+	cmd := exec.Command("git", "ls-tree", "-r", "--name-only", BranchName, branchDir)
 	output, err := cmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("failed to list META files: %w", err)
 	}
+
 	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
-	return lines, nil
+
+	// Remove branch directory prefix from paths
+	var result []string
+	for _, line := range lines {
+		if line != "" {
+			// Remove the branch directory prefix
+			relativePath := strings.TrimPrefix(line, branchDir+"/")
+			result = append(result, relativePath)
+		}
+	}
+
+	return result, nil
 }
 
-// ReadFile reads content of a file from the shadow branch
+// ReadFile reads content of a file from the shadow branch for current branch
 func ReadFile(filename string) (string, error) {
 	if !IsInitialized() {
 		return "", ErrNotInitialized
 	}
-	cmd := exec.Command("git", "show", fmt.Sprintf("%s:%s", BranchName, filename))
+
+	branch, err := GetCurrentBranch()
+	if err != nil {
+		return "", err
+	}
+
+	branchDir := getBranchMetaDir(branch)
+	filePath := filepath.Join(branchDir, filename)
+
+	cmd := exec.Command("git", "show", fmt.Sprintf("%s:%s", BranchName, filePath))
 	output, err := cmd.Output()
 	if err != nil {
 		return "", nil // File doesn't exist, return empty
@@ -234,14 +331,23 @@ func AppendToMetaFile(content string) error {
 	return AppendToFile(MetaFileName, content)
 }
 
-// AppendToFile appends content to a file on the shadow branch
+// AppendToFile appends content to a file on the shadow branch for current branch
 func AppendToFile(filename, content string) error {
 	if !IsInitialized() {
 		return ErrNotInitialized
 	}
 
+	branch, err := GetCurrentBranch()
+	if err != nil {
+		return err
+	}
+
+	branchDir := getBranchMetaDir(branch)
+
 	return withWorktree(func(tmpDir string) error {
-		filePath := filepath.Join(tmpDir, filename)
+		// Use branch-specific path
+		branchPath := filepath.Join(tmpDir, branchDir)
+		filePath := filepath.Join(branchPath, filename)
 
 		// Ensure parent directory exists
 		if err := os.MkdirAll(filepath.Dir(filePath), 0755); err != nil {
@@ -259,14 +365,15 @@ func AppendToFile(filename, content string) error {
 			return fmt.Errorf("failed to write content: %w", err)
 		}
 
-		// Git add and commit
-		cmd := exec.Command("git", "add", filename)
+		// Git add and commit (use full path from tmpDir root)
+		relPath := filepath.Join(branchDir, filename)
+		cmd := exec.Command("git", "add", relPath)
 		cmd.Dir = tmpDir
 		if err := cmd.Run(); err != nil {
 			return fmt.Errorf("failed to add file: %w", err)
 		}
 
-		cmd = exec.Command("git", "commit", "-m", fmt.Sprintf("Update %s", filename))
+		cmd = exec.Command("git", "commit", "-m", fmt.Sprintf("Update %s for branch %s", filename, branch))
 		cmd.Dir = tmpDir
 		if err := cmd.Run(); err != nil {
 			return fmt.Errorf("failed to commit: %w", err)
@@ -276,14 +383,23 @@ func AppendToFile(filename, content string) error {
 	})
 }
 
-// WriteFile writes content to a file on the shadow branch (overwrites existing)
+// WriteFile writes content to a file on the shadow branch (overwrites existing) for current branch
 func WriteFile(filename, content string) error {
 	if !IsInitialized() {
 		return ErrNotInitialized
 	}
 
+	branch, err := GetCurrentBranch()
+	if err != nil {
+		return err
+	}
+
+	branchDir := getBranchMetaDir(branch)
+
 	return withWorktree(func(tmpDir string) error {
-		filePath := filepath.Join(tmpDir, filename)
+		// Use branch-specific path
+		branchPath := filepath.Join(tmpDir, branchDir)
+		filePath := filepath.Join(branchPath, filename)
 
 		// Ensure parent directory exists
 		if err := os.MkdirAll(filepath.Dir(filePath), 0755); err != nil {
@@ -295,14 +411,15 @@ func WriteFile(filename, content string) error {
 			return fmt.Errorf("failed to write file: %w", err)
 		}
 
-		// Git add and commit
-		cmd := exec.Command("git", "add", filename)
+		// Git add and commit (use full path from tmpDir root)
+		relPath := filepath.Join(branchDir, filename)
+		cmd := exec.Command("git", "add", relPath)
 		cmd.Dir = tmpDir
 		if err := cmd.Run(); err != nil {
 			return fmt.Errorf("failed to add file: %w", err)
 		}
 
-		cmd = exec.Command("git", "commit", "-m", fmt.Sprintf("Update %s", filename))
+		cmd = exec.Command("git", "commit", "-m", fmt.Sprintf("Update %s for branch %s", filename, branch))
 		cmd.Dir = tmpDir
 		if err := cmd.Run(); err != nil {
 			return fmt.Errorf("failed to commit: %w", err)
