@@ -94,10 +94,9 @@ func runSync(cmd *cobra.Command, args []string) error {
 }
 
 func invokeSyncSkill() error {
-	prompt := "Use the laddermoon-sync skill to synchronize the codebase changes to META."
+	prompt := "Use the laddermoon-sync skill to sync repository changes to META."
 
-	// Use interactive mode (not -p) because the skill needs to modify files
-	cmd := exec.Command("claude", prompt)
+	cmd := exec.Command("claude", "-p", prompt, "--dangerously-skip-permissions")
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	cmd.Stdin = os.Stdin

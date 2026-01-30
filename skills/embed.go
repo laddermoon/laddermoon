@@ -6,11 +6,11 @@ import "embed"
 //go:embed laddermoon-sync/SKILL.md
 //go:embed laddermoon-audit/SKILL.md
 //go:embed laddermoon-propose/SKILL.md
-//go:embed laddermoon-solve/SKILL.md
-//go:embed laddermoon-question/SKILL.md
-//go:embed laddermoon-answer/SKILL.md
 //go:embed laddermoon-review/SKILL.md
-//go:embed laddermoon-improve/SKILL.md
+//go:embed laddermoon-criticize/SKILL.md
+//go:embed laddermoon-clarify/SKILL.md
+//go:embed laddermoon-code/SKILL.md
+//go:embed laddermoon-apply/SKILL.md
 var SkillsFS embed.FS
 
 // SkillNames lists all available LadderMoon skills
@@ -19,9 +19,9 @@ var SkillNames = []string{
 	"laddermoon-sync",
 	"laddermoon-audit",
 	"laddermoon-propose",
-	"laddermoon-solve",
-	"laddermoon-question",
-	"laddermoon-answer",
 	"laddermoon-review",
-	"laddermoon-improve",
+	"laddermoon-criticize",
+	"laddermoon-clarify",
+	"laddermoon-code",
+	"laddermoon-apply",
 }

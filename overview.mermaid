@@ -1,0 +1,59 @@
+graph TD
+    %% 节点定义
+    UserLog([User Log])
+    Meta((Meta.))
+    Question((Question))
+    Issue((Issue))
+    Task((Task))
+    Proposal((Proposal))
+    PR([PR / Worktree])
+    Repo[(Repo)]
+    
+    %% 人工介入节点样式 (红圈标识)
+    Tell<font color='red'>🔴 Tell</font>
+    Ask<font color='red'>🔴 Ask</font>
+    Verify<font color='red'>🔴 Verify</font>
+    Apply<font color='red'>🔴 Apply</font>
+    HIL<font color='red'>🔴 HIL Log</font>
+    Clarity<font color='red'>🔴 Clarity Check</font>
+
+    %% 1. 输入与对齐阶段
+    In((Start)) --> Tell
+    Tell -- Input --> Meta
+    Tell -- Logging --> UserLog
+    
+    Meta -- critic --> Question
+    Question -- ask --> Ask
+    Ask -- resolve --> Meta
+    
+    Meta -- self-check --> Clarity
+    Clarity -- "If Vague" --> Question
+    
+    %% 2. 发现问题与决策阶段
+    Meta -- audit/file --> Issue
+    Meta -- suggest --> Proposal
+    
+    Issue -- "Confirm (verify)" --> Verify
+    Proposal -- "Approve (verify)" --> Verify
+    Verify --> Task
+    
+    %% 3. 执行与子流程 (Work)
+    Task -- "Work (Subflow)" --> PR
+    PR -- apply --> Apply
+    Apply -- merge --> Repo
+    
+    %% 4. 反馈与同步闭环
+    Repo -- sync --> Meta
+    Task -- "Success/Update" --> HIL
+    HIL -- "Feedback Loop" --> Meta
+
+    %% 样式定义
+    style Tell stroke:#ff0000,stroke-width:2px
+    style Ask stroke:#ff0000,stroke-width:2px
+    style Verify stroke:#ff0000,stroke-width:2px
+    style Apply stroke:#ff0000,stroke-width:2px
+    style Clarity stroke:#ff0000,stroke-width:2px
+    style HIL stroke:#ff0000,stroke-width:2px
+    style Meta fill:#f9f,stroke:#333,stroke-width:2px
+    style Repo fill:#bbf,stroke:#333
+    style PR fill:#eee,stroke-dasharray: 5 5
