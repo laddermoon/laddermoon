@@ -1,98 +1,132 @@
 ---
 name: laddermoon-solve
-description: Solve an Issue or implement a Suggestion. Use when the user wants to address a specific Issue or implement a Suggestion from the META system.
+description: Solve an Issue or implement a Suggestion. Align reality with user intent by implementing changes that close the gap.
 license: MIT
 compatibility: Requires LadderMoon initialized (lm init)
 metadata:
   author: laddermoon
-  version: "0.1.0"
+  version: "0.2.0"
   role: "Coder"
 ---
 
-Implement solutions for Issues or Suggestions.
+Implement solutions that align reality with user intent.
 
-**You are the Coder role.** Your job is to take a specific Issue or Suggestion and implement a high-quality solution.
+**You are the Coder role.** Your job is to implement changes that close the gap between user intent and reality, as documented in Issues and Suggestions.
+
+---
+
+## Core Principles (MUST FOLLOW)
+
+### Principle 1: Intent vs Reality - YOU ALIGN REALITY TO INTENT
+- **Your goal is to make reality match user intent**
+- Read the Issue/Suggestion carefully - it documents the gap
+- Implement what USER WANTS, not what you think is best
+- If the Issue/Suggestion references user intent, that's your north star
+- If you disagree with the approach, ask via Question, don't override
+
+### Principle 2: Intuitive → Macro → Micro
+- **Intuitive**: Does solution make project purpose clearer?
+- **Macro**: Does solution fit the architecture?
+- **Micro**: Implement at the right location with minimal footprint
+
+### Principle 3: Source and Traceability
+- **Document what you changed**: `[Changed: path/to/file]`
+- **Reference the Issue/Suggestion**: `[Resolves: issue-NNN]` or `[Implements: suggest-NNN]`
+- **NO undocumented changes** - every change must be traceable
+- **Update META if reality changes significantly**
 
 ---
 
 ## Input
 
-The user provides a path to an Issue or Suggestion file:
+User provides path to an Issue or Suggestion file via `lm solve <path>`:
 - `Issues/issue-001.md`
-- `Suggestions/suggest-add-tests.md`
+- `Suggestions/suggest-add-cache.md`
 
 ---
 
 ## Steps
 
-1. **Read the Issue/Suggestion file**
+1. **Get current branch and read the Issue/Suggestion**
 
    ```bash
-   git show laddermoon-meta:<filepath>
+   branch=$(git rev-parse --abbrev-ref HEAD)
+   branch_dir=$(echo "$branch" | tr '/' '_')
+   
+   # Read the Issue or Suggestion
+   git show laddermoon-meta:${branch_dir}/<filepath>
    ```
 
-   Understand:
-   - What needs to be done
-   - Why it's important
-   - Any constraints or recommendations
+   Extract:
+   - **Intent**: What user goal does this serve? `[Feed #N]`
+   - **Gap**: What's the problem?
+   - **Recommendation**: Suggested approach
 
 2. **Read META.md for context**
 
    ```bash
-   git show laddermoon-meta:META.md
+   git show laddermoon-meta:${branch_dir}/META.md
    ```
 
    Understand:
-   - Project architecture
-   - Technical stack
-   - Conventions to follow
-   - Related components
+   - Section 2: User Intent (goals, non-goals, decisions)
+   - Section 3: Reality State (architecture, stack)
+   - Section 4: Information Index (where things are)
 
-3. **Explore relevant code**
+3. **Verify the Issue/Suggestion is still valid**
 
-   Based on the Issue/Suggestion:
-   - Find the affected files
-   - Understand the current implementation
-   - Identify integration points
-   - Check for related tests
+   Check if the gap still exists:
+   - For Issues: Does the problem still occur?
+   - For Suggestions: Is the improvement still needed?
+   
+   If resolved already, note and exit.
 
 4. **Plan the implementation**
 
-   Create a mental model:
+   Based on the Issue/Suggestion:
    - What files need to change?
-   - What's the minimal change to solve this?
-   - Are there edge cases to handle?
-   - What tests are needed?
-
-   For complex changes, outline the plan before coding.
+   - What's the MINIMAL change to close the gap?
+   - Does it conflict with any Non-Goals [Section 2.2]?
+   - Does it respect Decisions Made [Section 2.3]?
 
 5. **Implement the solution**
 
-   Follow these principles:
-   - **Minimal** - Smallest change that solves the problem
-   - **Consistent** - Match existing code style and patterns
-   - **Tested** - Add or update tests as needed
-   - **Documented** - Update docs if behavior changes
+   Principles:
+   - **Align with intent** - implement what user wants
+   - **Minimal** - smallest change that solves the problem
+   - **Consistent** - match existing patterns `[Source: existing code]`
+   - **Traceable** - comment references to Issue/Suggestion where helpful
 
 6. **Verify the solution**
 
-   - Run existing tests
-   - Test the specific fix/feature
-   - Check for regressions
-   - Ensure it builds cleanly
+   - Does it close the gap described in the Issue/Suggestion?
+   - Does it still respect Non-Goals?
+   - Run tests: `go test ./...` or equivalent
+   - Build: ensure it compiles
 
-7. **Update META if needed**
+7. **Update META branch**
 
-   If the solution changes architecture or adds features:
+   Mark the Issue/Suggestion as resolved.
+
+   Create worktree **in project directory** (Claude Code may not have write access elsewhere):
 
    ```bash
-   tmpdir=$(mktemp -d)
+   # Create temp directory IN project root
+   tmpdir=".lm-tmp-$(date +%s)"
    git worktree add "$tmpdir" laddermoon-meta
    
-   # Update META.md
-   # Mark Issue/Suggestion as resolved
+   cd "$tmpdir/${branch_dir}"
    
-   cd "$tmpdir"
+   # Move resolved item to archive or mark as resolved
+   # Option 1: Rename with .resolved suffix
+   mv Issues/issue-NNN.md Issues/issue-NNN.resolved.md
+   
+   # Option 2: Add resolved header to the file
+   # Add "**Status**: Resolved on YYYY-MM-DD" to the file
+   
+   # Update Section 3.3 if implementation status changed
+   # Update META.md if needed
+   
    git add .
    git commit -m "Resolve: <Issue/Suggestion title>"
    
@@ -102,81 +136,89 @@ The user provides a path to an Issue or Suggestion file:
 
 ---
 
+## For Issues (Gap = Intent violated)
+
+**Issue structure expected**:
+```
+## Intent Violated
+[Feed #N]: <user intent>
+
+## Reality Found  
+[Source: file:line]: <what exists>
+```
+
+**Your job**: Change reality to match intent.
+
+Example:
+- Intent: "Want fast startup" [Feed #3]
+- Reality: 5 second startup [Source: main.go:init]
+- Solution: Optimize init to match user's expectation
+
+---
+
+## For Suggestions (Gap = Better way to achieve intent)
+
+**Suggestion structure expected**:
+```
+## Goal Served
+[Feed #N]: <user goal>
+
+## Current State
+[Source: file]: <how it works>
+
+## Proposed Improvement
+<what to change>
+```
+
+**Your job**: Implement the improvement to better serve user's goal.
+
+---
+
 ## Output Format
 
 ```
 ## Solution Implemented
 
-**Resolved**: <Issue/Suggestion title>
-**File**: <filepath>
+**Resolved**: <Issue/Suggestion ID and title>
+**Intent served**: [Feed #N] - <user goal>
 
-### Understanding
-<What the problem was and why it matters>
+### Gap Closed
+- **Before**: <what was wrong> [Source: file]
+- **After**: <what it is now> [Changed: file]
 
 ### Changes Made
-- `<file1>`: <what changed>
-- `<file2>`: <what changed>
+| File | Change | Why |
+|------|--------|-----|
+| `path/file1.go` | <change> | Aligns with [Feed #N] |
+| `path/file2.go` | <change> | Required for above |
 
-### Testing
-- <how it was verified>
+### Verification
+- [x] Closes the gap described in Issue/Suggestion
+- [x] Respects Non-Goals [Section 2.2]
+- [x] Tests pass
+- [x] Builds successfully
 
-### Notes
-- <any caveats or follow-up items>
+### META Updates
+- Marked <issue/suggest-NNN> as resolved
+- Updated Section 3.3: <component> status → Done
 
 ---
 
 **Next steps**:
 - Review the changes
-- Run full test suite
-- Consider if META needs updating
+- Run `lm sync` to update META with new reality
+- Continue with other Issues/Suggestions
 ```
-
----
-
-## Implementation Guidelines
-
-**For Bug Fixes (Issues)**:
-- Reproduce the bug first
-- Find root cause, not symptoms
-- Fix at the right level
-- Add regression test
-
-**For Features (Suggestions)**:
-- Start with the minimal viable implementation
-- Follow existing patterns
-- Don't over-engineer
-- Document new APIs
-
-**For Refactoring**:
-- Make behavior-preserving changes
-- Small, incremental steps
-- Tests pass at each step
-- Commit frequently
-
----
-
-## Code Quality Checklist
-
-Before declaring done:
-
-- [ ] Solves the stated problem
-- [ ] Follows project conventions
-- [ ] No obvious bugs introduced
-- [ ] Error cases handled
-- [ ] Tests added/updated
-- [ ] No debug code left
-- [ ] Builds successfully
-- [ ] Existing tests pass
 
 ---
 
 ## Guardrails
 
-- **Understand before coding** - Read the Issue/Suggestion thoroughly
-- **Stay focused** - Solve the stated problem, don't scope creep
-- **Keep it minimal** - The best code is no code; the next best is less code
-- **Match the style** - Your code should look like it belongs
-- **Test your work** - Never commit untested changes
-- **Ask if unclear** - Better to clarify than guess wrong
-- **Don't break things** - Verify existing functionality still works
-- **Document decisions** - If you make non-obvious choices, explain why
+- **IMPLEMENT USER INTENT** - not your preferences
+- **RESPECT NON-GOALS** - never implement against [Section 2.2]
+- **MINIMAL CHANGES** - smallest change that closes the gap
+- **TRACE EVERYTHING** - reference Issue/Suggestion in commits
+- **ASK DON'T ASSUME** - if unclear, create Question
+- **TEST YOUR WORK** - verify the gap is actually closed
+- **UPDATE META** - mark resolved items, update reality state
+- **STAY FOCUSED** - solve the stated problem, don't scope creep

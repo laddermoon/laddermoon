@@ -58,16 +58,47 @@ func runFeed(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("empty feed content")
 	}
 
-	printInfo("Processing your input with AI...")
+	// Acquire lock for serialized META operations
+	printInfo("Acquiring META lock...")
+	lock, err := meta.AcquireMetaLock()
+	if err != nil {
+		printError("Failed to acquire lock: " + err.Error())
+		return err
+	}
+	defer lock.Release()
+
+	// Get next feed ID
+	feedID, err := meta.GetNextFeedID()
+	if err != nil {
+		printError("Failed to get feed ID: " + err.Error())
+		return err
+	}
+
+	printInfo(fmt.Sprintf("Recording Feed #%d...", feedID))
 	printInfo("Content: " + truncateString(content, 60))
 
-	// Invoke Claude Code with the laddermoon-feed skill
-	if err := invokeSkill("laddermoon-feed", content); err != nil {
+	// Record to UserFeed.log
+	if err := meta.RecordUserFeed(feedID, content); err != nil {
+		printError("Failed to record feed: " + err.Error())
+		return err
+	}
+
+	// Increment feed ID for next use
+	if err := meta.IncrementFeedID(feedID); err != nil {
+		printError("Failed to increment feed ID: " + err.Error())
+		return err
+	}
+
+	printInfo("Processing with AI...")
+
+	// Invoke Claude Code with the laddermoon-feed skill, passing feed ID
+	if err := invokeFeedSkill(feedID, content); err != nil {
 		printError("Failed to process feed: " + err.Error())
 		printInfo("Make sure 'claude' CLI is installed and configured.")
 		return err
 	}
 
+	printSuccess(fmt.Sprintf("Feed #%d recorded and processed!", feedID))
 	return nil
 }
 
@@ -78,10 +109,9 @@ func truncateString(s string, maxLen int) string {
 	return s[:maxLen-3] + "..."
 }
 
-// invokeSkill invokes a Claude Code skill with the given input
-func invokeSkill(skillName, input string) error {
-	// Claude Code uses /skillname:action format or just mention the skill
-	prompt := fmt.Sprintf("Use the %s skill to process this input:\n\n%s", skillName, input)
+// invokeFeedSkill invokes the laddermoon-feed skill with feed ID and content
+func invokeFeedSkill(feedID int, content string) error {
+	prompt := fmt.Sprintf("Use the laddermoon-feed skill to process Feed #%d:\n\n%s", feedID, content)
 
 	// Use interactive mode (not -p) because the skill needs to modify files
 	cmd := exec.Command("claude", prompt)

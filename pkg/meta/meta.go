@@ -7,7 +7,10 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"syscall"
+	"time"
 )
 
 const (
@@ -15,6 +18,12 @@ const (
 	BranchName = "laddermoon-meta"
 	// MetaFileName is the main META file name
 	MetaFileName = "META.md"
+	// FeedIDFile stores the next feed ID
+	FeedIDFile = ".next_feed_id"
+	// UserFeedLog is the file for recording raw user input
+	UserFeedLog = "UserFeed.log"
+	// LockFile is used for serializing META write operations
+	LockFile = ".lm.lock"
 )
 
 var (
@@ -108,9 +117,9 @@ func InitMetaStructure() error {
 
 	branchDir := getBranchMetaDir(branch)
 
-	// Create a temporary directory for the worktree
-	tmpDir, err := os.MkdirTemp("", "laddermoon-init-")
-	if err != nil {
+	// Create temp directory IN project root (Claude Code may not have write access elsewhere)
+	tmpDir := filepath.Join(gitRoot, fmt.Sprintf(".lm-tmp-%d", time.Now().UnixNano()))
+	if err := os.MkdirAll(tmpDir, 0755); err != nil {
 		return fmt.Errorf("failed to create temp dir: %w", err)
 	}
 	defer os.RemoveAll(tmpDir)
@@ -299,14 +308,16 @@ func ReadFile(filename string) (string, error) {
 }
 
 // withWorktree executes a function with a temporary worktree checked out to the META branch
+// Creates worktree in project directory for Claude Code compatibility
 func withWorktree(fn func(tmpDir string) error) error {
 	gitRoot, err := GetGitRoot()
 	if err != nil {
 		return err
 	}
 
-	tmpDir, err := os.MkdirTemp("", "laddermoon-work-")
-	if err != nil {
+	// Create temp directory IN project root (Claude Code may not have write access elsewhere)
+	tmpDir := filepath.Join(gitRoot, fmt.Sprintf(".lm-tmp-%d", time.Now().UnixNano()))
+	if err := os.MkdirAll(tmpDir, 0755); err != nil {
 		return fmt.Errorf("failed to create temp dir: %w", err)
 	}
 	defer os.RemoveAll(tmpDir)
@@ -518,4 +529,87 @@ func SkillsInstalled() bool {
 	skillFile := filepath.Join(gitRoot, ".claude", "skills", "laddermoon-feed", "SKILL.md")
 	_, err = os.Stat(skillFile)
 	return err == nil
+}
+
+// MetaLock represents a lock file for serializing META operations
+type MetaLock struct {
+	file *os.File
+	path string
+}
+
+// AcquireMetaLock acquires an exclusive lock for META operations
+// The lock file is created in the project root directory
+func AcquireMetaLock() (*MetaLock, error) {
+	gitRoot, err := GetGitRoot()
+	if err != nil {
+		return nil, err
+	}
+
+	lockPath := filepath.Join(gitRoot, LockFile)
+
+	// Create or open lock file
+	file, err := os.OpenFile(lockPath, os.O_CREATE|os.O_RDWR, 0644)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create lock file: %w", err)
+	}
+
+	// Try to acquire exclusive lock with timeout
+	timeout := time.After(30 * time.Second)
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		err := syscall.Flock(int(file.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
+		if err == nil {
+			return &MetaLock{file: file, path: lockPath}, nil
+		}
+
+		select {
+		case <-timeout:
+			file.Close()
+			return nil, fmt.Errorf("timeout waiting for META lock")
+		case <-ticker.C:
+			continue
+		}
+	}
+}
+
+// Release releases the lock
+func (l *MetaLock) Release() error {
+	if l.file != nil {
+		syscall.Flock(int(l.file.Fd()), syscall.LOCK_UN)
+		l.file.Close()
+		os.Remove(l.path)
+	}
+	return nil
+}
+
+// GetNextFeedID reads the next feed ID from the META branch
+func GetNextFeedID() (int, error) {
+	content, err := ReadFile(FeedIDFile)
+	if err != nil {
+		return 1, nil // Default to 1 if file doesn't exist
+	}
+	content = strings.TrimSpace(content)
+	if content == "" {
+		return 1, nil
+	}
+	id, err := strconv.Atoi(content)
+	if err != nil {
+		return 1, nil
+	}
+	return id, nil
+}
+
+// IncrementFeedID increments the feed ID and saves it
+func IncrementFeedID(currentID int) error {
+	nextID := currentID + 1
+	return WriteFile(FeedIDFile, strconv.Itoa(nextID)+"\n")
+}
+
+// RecordUserFeed records the user input to UserFeed.log
+func RecordUserFeed(feedID int, content string) error {
+	timestamp := time.Now().Format("2006-01-02 15:04:05")
+	entry := fmt.Sprintf("\n=== Feed #%d ===\nDate: %s\nContent:\n%s\n===\n", feedID, timestamp, content)
+	return AppendToFile(UserFeedLog, entry)
 }
